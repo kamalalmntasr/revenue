@@ -1,0 +1,16 @@
+{
+  "name": "برنامج الإيرادات",
+  "short_name": "الإيرادات",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "description": "تطبيق إدارة الإيرادات يعمل بدون اتصال",
+  "icons": [
+    {
+      "src": "icon.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    }
+  ],
+  "theme_color": "#3498db"
+}

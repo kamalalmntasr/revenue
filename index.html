@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#3498db">
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('service-worker.js')
+        .then(() => console.log("Service Worker Registered"));
+    }
+  </script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>برنامج الإيرادات</title>
+  <style>
+    body { font-family: 'Arial', sans-serif; background: #f8f8f8; margin: 0; padding: 20px; }
+    h2 { color: #2c3e50; }
+    .section { background: #fff; padding: 20px; margin-bottom: 20px; border-radius: 12px; box-shadow: 0 0 10px #ccc; }
+    label { display: block; margin-top: 10px; }
+    select, input { width: 100%; padding: 8px; margin-top: 5px; border-radius: 8px; border: 1px solid #ccc; }
+    button { margin-top: 15px; padding: 10px 20px; border: none; background-color: #3498db; color: white; border-radius: 8px; cursor: pointer; }
+    button:hover { background-color: #2980b9; }
+    table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+    th, td { border: 1px solid #ccc; padding: 8px; text-align: center; }
+    th { background-color: #eee; }
+    .action-btns button { margin: 0 5px; padding: 5px 10px; font-size: 0.9em; }
+  </style>
+</head>
+<body>
+
+  <div class="section">
+    <h2>الرئيسية</h2>
+    <p>مرحباً بك في برنامج إدارة الإيرادات.</p>
+  </div>
+
+  <div class="section">
+    <h2>إضافة / تعديل حقل إيراد</h2>
+    <form id="revenueForm">
+      <input type="hidden" id="editId">
+      <label>المديرية
+        <select id="directorate"></select>
+        <input type="text" id="newDirectorate" placeholder="أضف مديرية جديدة">
+      </label>
+      <label>اسم المحصل
+        <select id="collector"></select>
+        <input type="text" id="newCollector" placeholder="أضف اسم محصل جديد">
+      </label>
+      <label>اسم المنتفع
+        <input type="text" id="beneficiary">
+      </label>
+      <label>رقم قسيمة التحصيل
+        <input type="text" id="receiptNumber">
+      </label>
+      <label>نوع الإيراد
+        <select id="revenueType"></select>
+        <input type="text" id="newRevenueType" placeholder="أضف نوع إيراد جديد">
+      </label>
+      <label>المبلغ (بالريال اليمني)
+        <input type="number" id="amount" step="0.01">
+      </label>
+      <label>تاريخ التحصيل
+        <input type="date" id="collectionDate">
+      </label>
+      <label>سنة التحصيل
+        <select id="collectionYear"></select>
+      </label>
+      <label>اسم الموضع
+        <input type="text" id="locationName">
+      </label>
+      <label>مركز التكلفة
+        <input type="text" id="costCenter">
+      </label>
+      <label>الموقوف له
+        <input type="text" id="reservedFor">
+      </label>
+      <button type="submit">حفظ الإيراد</button>
+    </form>
+  </div>
+
+  <div class="section">
+    <h2>عرض التقارير والفلاتر</h2>
+    <form id="filterForm">
+      <label>حسب المديرية
+        <select id="filterDirectorate"></select>
+      </label>
+      <label>حسب المحصل
+        <select id="filterCollector"></select>
+      </label>
+      <label>من تاريخ إلى تاريخ
+        <input type="date" id="fromDate"> إلى <input type="date" id="toDate">
+      </label>
+      <label>قسائم التحصيل من رقم إلى رقم
+        <input type="text" id="receiptFrom"> إلى <input type="text" id="receiptTo">
+      </label>
+      <label>حسب نوع الإيراد
+        <select id="filterRevenueType"></select>
+      </label>
+      <button type="button" onclick="showReport()">عرض التقرير</button>
+      <button type="button" onclick="printReport()">طباعة التقرير</button>
+      <button type="button" onclick="exportToExcel()">تصدير إلى Excel</button>
+    </form>
+
+    <table id="reportTable">
+      <thead>
+        <tr>
+          <th>المديرية</th><th>المحصل</th><th>المنتفع</th><th>القسيمة</th><th>نوع الإيراد</th><th>المبلغ</th><th>التاريخ</th><th>السنة</th><th>الموضع</th><th>مركز التكلفة</th><th>الموقوف له</th><th>الإجراءات</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <script>
+    const collectionYear = document.getElementById('collectionYear');
+    for (let y = 2000; y <= 2030; y++) {
+      let opt = document.createElement('option');
+      opt.textContent = y;
+      collectionYear.appendChild(opt);
+    }
+
+    const fields = ['directorate', 'collector', 'revenueType'];
+
+    function loadOptions(field) {
+      const mainSelect = document.getElementById(field);
+      const filterSelect = document.getElementById('filter' + field.charAt(0).toUpperCase() + field.slice(1));
+      mainSelect.innerHTML = filterSelect.innerHTML = '<option value="">-- اختر --</option>';
+      const saved = JSON.parse(localStorage.getItem(field + 's') || '[]');
+      saved.forEach(val => {
+        let opt = new Option(val, val);
+        mainSelect.add(opt.cloneNode(true));
+        filterSelect.add(opt);
+      });
+    }
+
+    fields.forEach(loadOptions);
+
+    document.getElementById('revenueForm').addEventListener('submit', function(e) {
+      e.preventDefault();
+      fields.forEach(field => {
+        const newVal = document.getElementById('new' + field.charAt(0).toUpperCase() + field.slice(1)).value;
+        if (newVal) {
+          let saved = JSON.parse(localStorage.getItem(field + 's') || '[]');
+          if (!saved.includes(newVal)) {
+            saved.push(newVal);
+            localStorage.setItem(field + 's', JSON.stringify(saved));
+            loadOptions(field);
+            document.getElementById(field).value = newVal;
+          }
+        }
+      });
+
+      let revenues = JSON.parse(localStorage.getItem('revenues') || '[]');
+      const id = document.getElementById('editId').value || Date.now();
+      const data = {
+        id: Number(id),
+        directorate: document.getElementById('directorate').value,
+        collector: document.getElementById('collector').value,
+        beneficiary: document.getElementById('beneficiary').value,
+        receiptNumber: document.getElementById('receiptNumber').value,
+        revenueType: document.getElementById('revenueType').value,
+        amount: document.getElementById('amount').value,
+        collectionDate: document.getElementById('collectionDate').value,
+        collectionYear: document.getElementById('collectionYear').value,
+        locationName: document.getElementById('locationName').value,
+        costCenter: document.getElementById('costCenter').value,
+        reservedFor: document.getElementById('reservedFor').value
+      };
+
+      revenues = revenues.filter(r => r.id !== data.id);
+      revenues.push(data);
+      localStorage.setItem('revenues', JSON.stringify(revenues));
+      alert('تم حفظ الإيراد');
+      this.reset();
+      showReport();
+    });
+
+    function showReport() {
+      const revenues = JSON.parse(localStorage.getItem('revenues') || '[]');
+      const filtered = revenues.filter(item => {
+        const fd = document.getElementById('filterDirectorate').value;
+        const fc = document.getElementById('filterCollector').value;
+        const frt = document.getElementById('filterRevenueType').value;
+        const from = document.getElementById('fromDate').value;
+        const to = document.getElementById('toDate').value;
+        const recFrom = document.getElementById('receiptFrom').value;
+        const recTo = document.getElementById('receiptTo').value;
+        return (!fd || item.directorate === fd)
+            && (!fc || item.collector === fc)
+            && (!frt || item.revenueType === frt)
+            && (!from || item.collectionDate >= from)
+            && (!to || item.collectionDate <= to)
+            && (!recFrom || item.receiptNumber >= recFrom)
+            && (!recTo || item.receiptNumber <= recTo);
+      });
+
+      const reportTableBody = document.querySelector('#reportTable tbody');
+      reportTableBody.innerHTML = '';
+      filtered.forEach(r => {
+        const row = `<tr>
+          <td>${r.directorate}</td><td>${r.collector}</td><td>${r.beneficiary}</td><td>${r.receiptNumber}</td>
+          <td>${r.revenueType}</td><td>${r.amount}</td><td>${r.collectionDate}</td><td>${r.collectionYear}</td>
+          <td>${r.locationName}</td><td>${r.costCenter}</td><td>${r.reservedFor}</td>
+          <td class="action-btns">
+            <button onclick="editRevenue(${r.id})">تعديل</button>
+            <button onclick="deleteRevenue(${r.id})">حذف</button>
+          </td>
+        </tr>`;
+        reportTableBody.innerHTML += row;
+      });
+    }
+
+    function editRevenue(id) {
+      const revenues = JSON.parse(localStorage.getItem('revenues') || '[]');
+      const item = revenues.find(r => r.id === id);
+      if (!item) return;
+      document.getElementById('editId').value = item.id;
+      document.getElementById('directorate').value = item.directorate;
+      document.getElementById('collector').value = item.collector;
+      document.getElementById('beneficiary').value = item.beneficiary;
+      document.getElementById('receiptNumber').value = item.receiptNumber;
+      document.getElementById('revenueType').value = item.revenueType;
+      document.getElementById('amount').value = item.amount;
+      document.getElementById('collectionDate').value = item.collectionDate;
+      document.getElementById('collectionYear').value = item.collectionYear;
+      document.getElementById('locationName').value = item.locationName;
+      document.getElementById('costCenter').value = item.costCenter;
+      document.getElementById('reservedFor').value = item.reservedFor;
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function deleteRevenue(id) {
+      if (confirm('هل أنت متأكد من حذف هذا الإيراد؟')) {
+        let revenues = JSON.parse(localStorage.getItem('revenues') || '[]');
+        revenues = revenues.filter(r => r.id !== id);
+        localStorage.setItem('revenues', JSON.stringify(revenues));
+        showReport();
+      }
+    }
+
+    function printReport() {
+      window.print();
+    }
+
+    function exportToExcel() {
+      let table = document.getElementById("reportTable");
+      let html = table.outerHTML.replace(/ /g, '%20');
+      let a = document.createElement('a');
+      a.href = 'data:application/vnd.ms-excel,' + html;
+      a.download = 'تقرير_الإيرادات.xls';
+      a.click();
+    }
+  </script>
+</body>
+</html>
